@@ -1,0 +1,354 @@
+<!-- Copyright (C) 2021 Pattern Labs, Inc - All Rights Reserved
+Unauthorized copying of this file, via any medium is strictly prohibited
+Proprietary and confidential  -->
+
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Pattern Labs - Tele-operation (mini version)</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/progressbar.js/1.1.0/progressbar.min.js"
+    integrity="sha512-EZhmSl/hiKyEHklogkakFnSYa5mWsLmTC4ZfvVzhqYNLPbXKAXsjUYRf2O9OlzQN33H0xBVfGSEIUeqt9astHQ=="
+    crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <style>
+        /*importing the pattern base scheme*/
+        @import url('https://cdn.jsdelivr.net/gh/Pattern-Labs/styling@main/web/css/pattern-base.css');
+
+        body {
+            font-size: calc(.6*(1vw + 1vh));
+        }
+
+        /* other element styling */
+        hr {
+            border-color: var(--pattern-lightest);
+        }
+
+        /* main grist styling and base element class */
+        .grid-container {
+            margin: .75em;
+            display: grid;
+            grid-template-columns: repeat(16, 1fr);
+            grid-template-rows: repeat(10, 1fr);
+            grid-gap: .75em;
+            height: calc(100vh - 1.5em);
+            overflow: hidden;
+        }
+
+        .element {
+            background-color: var(--pattern-darker);
+            border-radius: .5em;
+            overflow: auto;
+            padding: .5em;
+        }
+
+        /* telop video element */
+        .video.element {
+            overflow: hidden;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+
+        .video.element > hr {
+            width: 100%;
+        }
+
+        .video.element>img {
+            width: 100%;
+            height: 100%;
+            border-radius: .5em;
+            background-color: var(--pattern-darker);
+        }
+
+        .video.element>canvas {
+            width: calc(100% - 1em);
+            height: calc(100% - 1em);
+            position: absolute;
+            top: .5em;
+            left: .5em;
+        }
+
+        /* logo element */
+
+        .logo.element {
+            background-color: unset;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+        }
+
+        .logo.element>img {
+            width: 80%;
+            height: auto;
+            margin: auto;
+            display: block;
+        }
+
+        /*element header */
+        .element-header {
+            margin: unset;
+        }
+
+        /* css for drive neutral and reverse */
+        .status.base {
+            display: flex;
+            justify-content: space-evenly;
+            align-items: center;
+        }
+
+
+        #gear-box>text {
+            font-size: 2.5em;
+            font-weight: bold;
+            color: var(--pattern-lighter);
+        }
+
+        #gear-box>text.enabled {
+            color: var(--pattern-red);
+        }
+
+        /* css for blinkers */
+        #steering>* {
+            margin: .5em;
+            width: 5em;
+            height: 5em;
+        }
+
+        #steering>.blinker {
+            width: 3em;
+            height: 3em;
+        }
+
+        #steering>.blinker>svg {
+            display: block;
+            margin: auto;
+        }
+
+        #steering>.blinker>svg>g {
+            fill: var(--pattern-lighter);
+        }
+
+        #steering>.blinker.enabled>svg>g {
+            animation-duration: .75s;
+            animation-name: blinky;
+            animation-iteration-count: infinite;
+        }
+
+        @keyframes blinky {
+            from {
+                fill: var(--pattern-lighter);
+            }
+
+            25% {
+                fill: var(--pattern-yellow);
+            }
+
+            75% {
+                fill: var(--pattern-yellow);
+            }
+
+            to {
+                fill: var(--pattern-lighter);
+            }
+        }
+
+        /* css for throttle speed and brake */
+
+        #acceleration>* {
+            margin: .5em;
+        }
+
+        #speed {
+            font-size: 1.5em;
+            font-weight: bold;
+            color: var(--pattern-lighter);
+        }
+
+    </style>
+    <script type = "text/javascript">
+        var joystick_thread = null;
+        var fwd_val = 0;
+        var turn_val = 0;
+        var l_blinker = false;
+        var r_blinker = false;
+        var horn = false;
+        var throttle_bar = null;
+        var brake_bar = null;
+        const MIN_SPEED_FOR_GEAR = 0.1;
+
+        function speed(value) {
+            document.getElementById('speed').innerHTML = 'Speed: ' + value.toFixed(0) + ' mph';
+        }
+
+        function joystickFunction(){
+            var cmd_obj = new Object();
+            var gamepad_num = document.getElementById("controller-num").value;
+            if(gamepad_num != null){
+               var gamepad = navigator.getGamepads()[gamepad_num - 1];
+                console.log("using gamepad: " + gamepad_num);
+                cmd_obj.fwd = gamepad.buttons[7].value - gamepad.buttons[6].value;
+                cmd_obj.turn = gamepad.axes[0];
+                cmd_obj.l_turn = gamepad.buttons[4].pressed;
+                cmd_obj.r_turn = gamepad.buttons[5].pressed;
+                cmd_obj.horn = gamepad.buttons[2].pressed;
+            }else{
+                cmd_obj.fwd = fwd_val;
+                cmd_obj.turn = turn_val;
+                cmd_obj.l_turn = l_blinker;
+                cmd_obj.r_turn = r_blinker;
+                cmd_obj.horn = horn;
+            }
+            let xhr = new XMLHttpRequest();
+            xhr.open("POST", "http://" + location.hostname + "/cmd");
+            xhr.setRequestHeader("Accept", "application/json");
+            xhr.setRequestHeader("Content-Type", "application/json");
+            xhr.send(JSON.stringify(cmd_obj));
+            //speed and shifters
+            speed(15 * cmd_obj.fwd);
+            document.getElementById('neutral').className = '';
+            document.getElementById('reverse').className = '';
+            document.getElementById('drive').className = '';
+            if(cmd_obj.fwd > MIN_SPEED_FOR_GEAR){
+                throttle_bar.animate(cmd_obj.fwd);
+                brake_bar.animate(0);
+                document.getElementById('drive').className = 'enabled';
+            }else if(cmd_obj.fwd < -1 * MIN_SPEED_FOR_GEAR){
+                throttle_bar.animate(0);
+                brake_bar.animate(cmd_obj.fwd);
+                document.getElementById('reverse').className = 'enabled';
+            }else{
+                throttle_bar.animate(0);
+                brake_bar.animate(0);
+                document.getElementById('neutral').className = 'enabled';
+            }
+            if(cmd_obj.l_turn){
+                document.getElementById('left-blinker').classList.add('enabled');
+            }else{
+                document.getElementById('left-blinker').classList.remove('enabled');  
+            }
+            if(cmd_obj.r_turn){
+                document.getElementById('right-blinker').classList.add('enabled');
+            }else{
+                document.getElementById('right-blinker').classList.remove('enabled');  
+            }
+
+    };
+
+    function init() {
+        joystick_thread = setInterval(joystickFunction, 100);
+    
+        var bodySelector = document.querySelector(".body");
+        var style = getComputedStyle(bodySelector);
+        throttle_bar = new ProgressBar.Line('#throttle-bar', {
+            duration: 100,
+            strokeWidth: 2,
+            color: style.getPropertyValue('--pattern-green'),
+            trailColor: style.getPropertyValue('--pattern-lighter'),
+            trailWidth: 1,
+            text: {
+                style: {
+                    color: style.getPropertyValue('--pattern-lighter'),
+                },
+                value: 'Throttle: 0%',
+                autostyle: false,
+            },
+            step: (state, bar) => {
+                bar.setText('Throttle: ' + Math.round(bar.value() * 100) + ' %');
+            }
+        });
+
+        brake_bar = new ProgressBar.Line('#brake-bar', {
+            strokeWidth: 2,
+            duration: 100,
+            color: style.getPropertyValue('--pattern-red'),
+            trailColor: style.getPropertyValue('--pattern-lighter'),
+            trailWidth: 1,
+            text: {
+                style: {
+                    color: style.getPropertyValue('--pattern-lighter'),
+                },
+                value: 'Brake: 0%',
+                autostyle: false,
+            },
+            step: (state, bar) => {
+                bar.setText('Brake: ' + Math.round(bar.value() * 100) + ' %');
+            }
+        });
+    }
+
+    </script>
+</head>
+
+<body onload="init()" class="body">
+    <div class="grid-container">
+        <div class="logo element" style="grid-row: 1; grid-column: 1/5;">
+            <img src="assets/img/pattern-logo-full.png"></img>
+        </div>
+
+
+        <div class="element" style="grid-row: 2 / 7; grid-column: 1/5;">
+            <h3 class="element-header">Robot Status</h3>
+            <hr>
+            <br />
+            <!-- gear box -->
+            <div id="gear-box" class="status base">
+                <text id="neutral">N</text> <text id="drive">D</text> <text id="reverse">R</text>
+            </div>
+            <br />
+            <!-- steering elements -->
+            <div id="steering" class="status base">
+                <div id="left-blinker" class="blinker">
+                    <svg viewBox="0 0 136.851 147.8138">
+                        <g transform="translate(-78.514537,-64.26551)">
+                            <path
+                                d="m 207.86654,97.920647 h -47.944 l -0.002,-26.155 c 0,-3.033 -1.827,-5.768 -4.63,-6.929 -2.804,-1.161 -6.027,-0.519 -8.174,1.626 L 80.710537,132.86865 c -1.406,1.406 -2.196,3.314 -2.196,5.303 0,1.989 0.79,3.897 2.197,5.303 l 66.408003,66.406 c 1.435,1.435 3.353,2.197 5.305,2.197 0.966,0 1.94,-0.187 2.868,-0.571 2.803,-1.161 4.63,-3.896 4.63,-6.929 v -26.155 h 47.943 c 4.143,0 7.5,-3.358 7.5,-7.5 v -65.503 c 10e-4,-4.141 -3.357,-7.499003 -7.499,-7.499003 z" />
+                        </g>
+                    </svg>
+                </div>
+                <div id="steering-bar"></div>
+                <div id="right-blinker" class="blinker">
+                    <svg viewBox="0 0 136.851 147.8138">
+                        <g transform="translate(-85.688919,-65.978521)">
+                            <path fill-rule="nonzero" m
+                                d="m 220.34292,134.58232 -66.408,-66.405998 c -2.145,-2.146 -5.371,-2.788 -8.173,-1.626 -2.803,1.161 -4.63,3.896 -4.63,6.929 v 26.155 H 93.188919 c -4.143,0 -7.5,3.357998 -7.5,7.499998 v 65.503 c 0,4.142 3.357,7.5 7.5,7.5 h 47.943001 l 0.002,26.155 c 0,3.033 1.827,5.768 4.63,6.929 0.928,0.384 1.902,0.571 2.868,0.571 1.952,0 3.87,-0.762 5.306,-2.197 l 66.406,-66.406 c 1.406,-1.406 2.196,-3.314 2.196,-5.303 0,-1.989 -0.79,-3.898 -2.197,-5.304 z " />
+                        </g>
+                    </svg>
+                </div>
+            </div>
+
+            <!-- Speed Throttle Brake -->
+            <p id="speed">Speed: 0 mph</p>
+            <div id="throttle-bar"></div>
+            <br />
+            <div id="brake-bar"></div>
+        </div>
+
+        <div class="element" style="grid-row: 7 / 11; grid-column: 1/5">
+            <div class="logging">
+                <h3 class="element-header">Settings</h3>
+                <hr>
+                <div class="input-container">
+                    <label for="controller">Controller</label>
+                    <select id="controller-num" name="controller">
+                        <option value="null">keyboard</option>
+                        <option value="1">1</option>
+                        <option value="2">2</option>
+                        <option value="3">3</option>
+                        <option value="4">4</option>
+                      </select>
+                </div>
+            </div>
+        </div>
+
+        <div class="video element" style="grid-row: 1 / 11; grid-column: 5/17;">
+            <img id="display_frame" style="cursor:crosshair;" src="/mjpeg/1">
+            <canvas id="operator-steering-overlay"></canvas>
+        </div>
+
+    </div>
+
+</body>
+
+</html>
