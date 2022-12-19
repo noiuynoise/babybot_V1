@@ -12,8 +12,8 @@ struct configData{
 const configData defaultConfig = {
   {.ap_ssid = "babybot2"},
   {.ap_pwd = "myRobotPass1234%"},
-  {.ext_ap_ssid = "samw"},
-  {.ext_ap_pwd = "3281torreys"},
+  {.ext_ap_ssid = "SSID"},
+  {.ext_ap_pwd = "PASSWORD"},
   {.mdns_name = "babybot"}
 };
 
